@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#111111">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <title>Dungeon Roguelike</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="game-wrapper">
+        <!-- ЛЕВАЯ ПАНЕЛЬ: карта, камера/звук, журнал, управление -->
+        <div id="left-panel">
+            <button class="drawer-close" onclick="game.toggleDrawer('left')">✕ Закрыть (игра продолжится)</button>
+            <div class="panel">
+                <h3>Карта</h3>
+                <div id="view-label" class="sub" style="color:#9cf"></div>
+                <canvas id="minimap" width="256" height="256"></canvas>
+                <div class="row-btns">
+                    <button id="sound-btn" onclick="game.audio.toggle(); game.updateSoundUI()">🔊 Звук (N)</button>
+                    <button onclick="game.setView(game.renderer.cycleView())">Камера (V)</button>
+                    <button onclick="game.openPause()">Пауза (P)</button>
+                    <button onclick="game.toggleBestiary()">📖 Бестиарий (B)</button>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h3>Журнал</h3>
+                <div class="log" id="log"></div>
+            </div>
+
+            <details class="panel" id="help-panel" open>
+                <summary>Управление</summary>
+                <div class="help">
+                    <b>WASD</b> — движение · <b>мышь</b> — обзор/прицел<br>
+                    <b>ЛКМ</b> — удар · <b>ПКМ / F</b> — огненный шар<br>
+                    <b>R</b> — умение класса · <b>Q</b> — зелье<br>
+                    <b>E</b> — действие (сундук, алтарь, торговец, трещина в стене)<br>
+                    <b>G</b> — смена заклинания · <b>T</b> — поднять павшего (некромантия)<br>
+                    <b>K</b> — навыки · <b>B</b> — бестиарий<br>
+                    <b>N</b> — звук · <b>P / Esc</b> — пауза и сохранение<br>
+                    <b>V</b> или <b>1 / 2 / 3</b> — камера: от 1-го лица / от 3-го / сверху<br>
+                    <b>На телефоне:</b> джойстик слева, свайп справа — обзор.<br><br>
+                    <span style="color:#f33">!</span> над врагом — замах, отойдите. <span style="color:#fc3">■</span> золотая обводка — элитный враг.<br>
+                    Бирюзовые метки — ваши союзники (💀 мертвецы, ✦ феи). Значки над врагами: 💥 взрывается · 💚 лечится · 🔮 призывает · ⚡ быстрый · 🛡 броня.<br>
+                    Решётки на дверях — арена. Проклятые вещи (☠) не снять без Свитка Очищения.
+                </div>
+            </details>
+        </div>
+
+        <div id="game-area">
+            <canvas id="gameCanvas" width="640" height="480"></canvas>
+        </div>
+
+        <!-- ПРАВАЯ ПАНЕЛЬ: персонаж, снаряжение, инвентарь -->
+        <div id="ui-sidebar">
+            <button class="drawer-close" onclick="game.toggleDrawer('right')">✕ Закрыть (игра продолжится)</button>
+            <div class="floor-counter">ЭТАЖ: <span id="floor">1</span> · <span id="biome-name"></span></div>
+            <div class="seed" id="seed-label"></div>
+
+            <div class="panel">
+                <h3 id="class-name">Персонаж</h3>
+                <div class="stat-row">Уровень: <span id="level">1</span></div>
+                <div class="stat-row">Опыт: <span id="xp">0</span></div>
+                <div class="stat-row">HP: <span><span id="hp">100</span> / <span id="max-hp">100</span></span></div>
+                <div class="stat-row">Мана: <span><span id="mana">50</span> / <span id="max-mana">50</span></span></div>
+                <div class="stat-row">Золото: <span><span id="gold">0</span> 💰</span></div>
+                <div class="stat-row">Ключи: <span><span id="keys">0</span> 🗝</span></div>
+                <div class="stat-row">Камни улучшения: <span><span id="stones">0</span> 💎</span></div>
+                <div class="stat-row">Броня: <span id="armor">0</span></div>
+                <div class="stat-row">Очки характеристик: <span id="points">0</span></div>
+                <div class="stat-row">Сила (STR): <span><span id="str">5</span> <button onclick="game.upgrade('str')">+</button></span></div>
+                <div class="stat-row">Ловкость (DEX): <span><span id="dex">5</span> <button onclick="game.upgrade('dex')">+</button></span></div>
+                <div class="stat-row">Интеллект (INT): <span><span id="int">5</span> <button onclick="game.upgrade('int')">+</button></span></div>
+                <div class="stat-row">Очки навыков: <span><span id="skill-points">0</span> <button onclick="game.toggleSkills()">Умения (K)</button></span></div>
+                <div class="sub" id="ability-label"></div>
+                <div class="sub" id="spell-label"></div>
+                <div class="sub" id="status-label" style="color:#fc8"></div>
+                <div class="sub" id="shield-label" style="color:#8cf"></div>
+                <div class="sub" id="quest-label" style="color:#fd3"></div>
+                <div class="sub" id="blessing-label" style="color:#7cf"></div>
+            </div>
+
+            <div class="panel">
+                <h3>Армия и духи <small id="army-count"></small></h3>
+                <ul id="army-list"></ul>
+            </div>
+
+            <div class="panel">
+                <h3>Благословения богов</h3>
+                <ul id="gifts-list"></ul>
+            </div>
+
+            <div class="panel">
+                <h3>Снаряжение</h3>
+                <div id="equip-weapon" class="equip">Оружие: —</div>
+                <div id="equip-armor" class="equip">Броня: —</div>
+                <div id="equip-accessory" class="equip">Аксессуар: —</div>
+                <h3 style="margin-top:10px">Инвентарь</h3>
+                <ul id="inventory-list"></ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Главное меню -->
+    <div id="main-menu" class="overlay-screen">
+        <h1>DUNGEON ROGUELIKE</h1>
+        <p>Выберите класс и спуститесь в подземелье</p>
+        <div id="class-select">
+            <button class="class-btn" data-cls="warrior" onclick="game.selectClass('warrior')">🛡️ Воин</button>
+            <button class="class-btn" data-cls="rogue" onclick="game.selectClass('rogue')">🗡️ Разбойник</button>
+            <button class="class-btn" data-cls="mage" onclick="game.selectClass('mage')">🔮 Маг</button>
+            <button class="class-btn" data-cls="necromancer" onclick="game.selectClass('necromancer')">💀 Некромант</button>
+        </div>
+        <div id="class-desc"></div>
+        <input id="seed-input" type="text" placeholder="Сид забега (необязательно)" maxlength="24" autocomplete="off">
+        <button class="menu-btn daily hidden" id="continue-btn" onclick="game.continueRun()">▶ ПРОДОЛЖИТЬ</button>
+        <button class="menu-btn" onclick="game.startGame('random')">ИГРАТЬ</button>
+        <button class="menu-btn daily" onclick="game.startGame('daily')">📅 ЕЖЕДНЕВНЫЙ ЗАБЕГ</button>
+        <button class="menu-btn secondary" onclick="game.openLoadDialog()">📂 ЗАГРУЗИТЬ СОХРАНЕНИЕ (ФАЙЛ)</button>
+        <button class="menu-btn secondary" onclick="game.showSettings()">НАСТРОЙКИ КЛАВИШ</button>
+        <button class="menu-btn secondary" id="touch-toggle" onclick="toggleTouchMode()">📱 Сенсорный режим</button>
+        <div id="record-line"></div>
+    </div>
+
+    <div id="settings-menu" class="overlay-screen hidden">
+        <h2>НАСТРОЙКА КЛАВИШ</h2>
+        <div class="key-bind-row">Вперёд: <button id="bind-forward" onclick="game.rebindKey('forward')">W</button></div>
+        <div class="key-bind-row">Назад: <button id="bind-backward" onclick="game.rebindKey('backward')">S</button></div>
+        <div class="key-bind-row">Влево: <button id="bind-left" onclick="game.rebindKey('left')">A</button></div>
+        <div class="key-bind-row">Вправо: <button id="bind-right" onclick="game.rebindKey('right')">D</button></div>
+        <button class="menu-btn" onclick="game.hideSettings()">НАЗАД</button>
+    </div>
+
+    <!-- Торговец / Кузнец (содержимое строит ui2.js) -->
+    <div id="trader-modal" class="overlay-screen hidden">
+        <h2 id="npc-title"></h2>
+        <div id="npc-body"></div>
+        <div id="trader-msg" style="min-height:1.2em;color:#f66"></div>
+        <button class="menu-btn" onclick="game.closeTrader()">ЗАКРЫТЬ</button>
+    </div>
+
+    <!-- События (алтари) -->
+    <div id="event-modal" class="overlay-screen hidden">
+        <h2 id="event-title"></h2>
+        <p id="event-text"></p>
+        <pre id="event-extra"></pre>
+        <div id="event-options"></div>
+    </div>
+
+    <!-- Дерево навыков -->
+    <div id="skills-modal" class="overlay-screen hidden">
+        <h2>ДЕРЕВО НАВЫКОВ</h2>
+        <p>Очков навыков: <b id="skills-points">0</b> · новое очко даётся за каждый уровень</p>
+        <div id="skills-tree"></div>
+        <button class="menu-btn" onclick="game.closeAllModals()">ЗАКРЫТЬ (K)</button>
+    </div>
+
+    <!-- Бестиарий -->
+    <div id="bestiary-modal" class="overlay-screen hidden">
+        <h2>📖 БЕСТИАРИЙ <small id="bestiary-count"></small></h2>
+        <div id="bestiary-list"></div>
+        <button class="menu-btn" onclick="game.closeAllModals()">ЗАКРЫТЬ (B)</button>
+    </div>
+
+    <!-- Пауза -->
+    <div id="pause-menu" class="overlay-screen hidden">
+        <h2>⏸ ПАУЗА</h2>
+        <button class="menu-btn" onclick="game.closeAllModals()">ПРОДОЛЖИТЬ</button>
+        <button class="menu-btn secondary" onclick="game.audio.toggle(); game.updateSoundUI()">ЗВУК ВКЛ/ВЫКЛ</button>
+        <button class="menu-btn secondary" onclick="game.closeAllModals(); game.setView(game.renderer.cycleView())">СМЕНИТЬ КАМЕРУ</button>
+        <button class="menu-btn touch-only" onclick="game.openTouchEditor()">🎮 НАСТРОИТЬ КНОПКИ</button>
+        <button class="menu-btn daily" onclick="game.saveToFile()">💾 СОХРАНИТЬ В ФАЙЛ</button>
+        <button class="menu-btn daily" onclick="game.openLoadDialog()">📂 ЗАГРУЗИТЬ СОХРАНЕНИЕ</button>
+        <button class="menu-btn secondary" onclick="game.closeAllModals(); game.gameOver()">СДАТЬСЯ (ЗАВЕРШИТЬ ЗАБЕГ)</button>
+    </div>
+
+    <!-- Конец забега -->
+    <div id="gameover-screen" class="overlay-screen hidden">
+        <h1 style="color:#f55">ВЫ ПОГИБЛИ</h1>
+        <pre id="gameover-text"></pre>
+        <button class="menu-btn" onclick="game.restartSameSeed()">ЕЩЁ РАЗ (ТОТ ЖЕ СИД)</button>
+        <button class="menu-btn secondary" onclick="game.restartNew()">В МЕНЮ</button>
+    </div>
+
+    <input type="file" id="load-file" accept=".json,application/json" style="display:none" onchange="game.onLoadFile(this)">
+
+    <script src="modules/rng.js"></script>
+    <script src="modules/balance.js"></script>
+    <script src="modules/skills.js"></script>
+    <script src="modules/status.js"></script>
+    <script src="modules/gods.js"></script>
+    <script src="modules/audio.js"></script>
+    <script src="modules/sprites.js"></script>
+    <script src="modules/map.js"></script>
+    <script src="modules/biomes.js"></script>
+    <script src="modules/items.js"></script>
+    <script src="modules/player.js"></script>
+    <script src="modules/enemy.js"></script>
+    <script src="modules/trader.js"></script>
+    <script src="modules/npcs.js"></script>
+    <script src="modules/renderer.js"></script>
+    <script src="modules/events.js"></script>
+    <script src="modules/ui.js"></script>
+    <script src="modules/ui2.js"></script>
+    <script src="modules/bestiary.js"></script>
+    <script src="modules/save.js"></script>
+    <script src="modules/allies.js"></script>
+    <script src="game.js"></script>
+    <script src="modules/touch.js"></script>
+</body>
+</html>
